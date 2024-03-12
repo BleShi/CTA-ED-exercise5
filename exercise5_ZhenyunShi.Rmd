@@ -21,99 +21,107 @@ library(preText)
 
 # 1.Choose another book or set of books from Project Gutenberg.
 
+#I chose two books: "women" (21840) and "what a young women ought to know" (28458), and also extract the information of "author"
 ```{r}
-# Download 'Woman' and 'What a Young Woman Ought to Know by' from Project Gutenberg.
-
-tocq <- gutenberg_download(c(21840,28458), meta_fields = "author")
+tocq <- gutenberg_download(c(21840,28458),
+                           meta_fields = "author")
 ```
 
+#now I tokenize the two books, firstly we should categorize two books by creaing a colomn "booknumber", DiA1 for book ID 21840, DiA2 for book ID28458; secondly,I use "unnest_tokens (word, text)" to tokenize texts of tocq (two books) by words, also exclude those invalid words (n.a.), and count how many times each unique word occurs in each book. Finally, we should remove those typical stopwords.
 ```{r}
-# These texts were processed and analyzed to count the number of occurrences of each word (after removing the deactivated words) in each book.
-
 tocq_words <- tocq %>%
-  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>% # Assigning book numbers to each book.
-  unnest_tokens(word, text) %>% # Splitting text into words.
-  filter(!is.na(word)) %>% # Filter out missing values.
-  count(booknumber, word, sort = TRUE) %>% # Count and sort every word in every book.
+  mutate(booknumber = ifelse(gutenberg_id==21840, "DiA1", "DiA2")) %>%
+  unnest_tokens(word, text) %>%
+  filter(!is.na(word)) %>%
+  count(booknumber, word, sort = TRUE) %>%
   ungroup() %>%
-  anti_join(stop_words) # Discontinuing stop words.
+  anti_join(stop_words)
 ```
 
+#now we transform the dataframe "tocq_words" to a document-terms-matrix "tocq_dtm", by using cast_dtm (booknumber, word, n). booknumber is the document, word=terms, n is the occurence of each word in this document.
 ```{r}
-# Create a document-word-item matrix.
-
 tocq_dtm <- tocq_words %>%
   cast_dtm(booknumber, word, n)
 
 tm::inspect(tocq_dtm)
 ```
+#we get the matrix, sparsity= 35% means only 35% of terms of the book will not appear in this matrix.
 
-#2. Run your own topic model on these books, changing the k of topics, and evaluating accuracy.
+#now we turn to estimate our topic model and visualize it.
+
+#1. set our seed that could make sure we can reproduce the same results each time. *also change the k value from 10 to 20
 
 ```{r}
-# Modeling and extracting word distributions. (k = 8)
-
-tocq_lda <- LDA(tocq_dtm, k = 8, control = list(seed = 1234)) # Change the K value as requested in the question.
-
-tocq_topics <- tidy(tocq_lda, matrix = "beta") # Distribution of extracted subject terms.
-head(tocq_topics, n = 10) # Preview of the top 10 items in the distribution of subject terms.
+tocq_lda <- LDA(tocq_dtm, k = 20, control = list(seed = 1234))
 ```
 
+#now we can see the per-topic-per-word-probabilities (i.e., the beta of each unique word to this given document)
+
 ```{r}
-# The top 10 words with the highest weights under each topic were selected and visualized using the ggplot2 package.
+tocq_topics <- tidy(tocq_lda, matrix = "beta")
 
-tocq_top_terms <- tocq_topics %>%
-  group_by(topic) %>%
-  top_n(10, beta) %>% # Select the 10 words with the highest weight.
-  ungroup() %>%
-  arrange(topic, -beta) # Descending order words.
-
-tocq_top_terms %>% 
-  mutate(term = reorder_within(term, beta, topic)) %>% # Reorder words.
-  ggplot(aes(beta, term, fill = factor(topic))) + # Set up the charts and do the same below.
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ topic, scales = "free", ncol = 4) +
-  scale_y_reordered() +
-  theme_tufte(base_family = "Helvetica")
+head(tocq_topics, n = 20)
 ```
+#we can see that "women" is the most often word and it most likely to belong to topic 18, now we can visualize by making a plot for the topi-per-term-per-row. Because of limited space, I only choose top 6 relevant word for each topic (total:20)
 
 ```{r}
-# Words are extracted from the raw text data, deactivated words are removed, and the frequency of occurrence of the remaining words is calculated.
+tocq_top_terms <- tocq_topics %>% #create a varaible tocq_top_terms by extracting content from tocq_topics
+  group_by(topic) %>% #now we group each terms by topic
+  top_n(6, beta) %>% # we select only top 6 terms that has the highest data value. 
+  ungroup() %>% #we ungroup this dataframe tocq_topics
+  arrange(topic, -beta) #rearrange this variable by grouping terms by topic and sort them by their data value in desending order.
 
-tidy_tocq <- tocq %>%
-  unnest_tokens(word, text) %>%
+tocq_top_terms %>% #use the pipe symbol
+  mutate(term = reorder_within(term, beta, topic)) %>% #we rectify the "term" column with the order "term, bata, topic" for the next visualization
+  ggplot(aes(beta, term, fill = factor(topic))) + #we set the x axis as "beta", y axis as "term", and fill them colours based on each topic.
+  geom_col(show.legend = FALSE) + #create a column plot, without legends.
+  facet_wrap(~ topic, scales = "free", ncol = 4) + #sort them based on different topics, wihout sclaes, and each line have 4 topics.
+  scale_y_reordered() + #recorder the y scale to be clear
+  theme_tufte(base_family = "Helvetica") + #set the style of our plot and use the font "Helvetica"
+  theme(axis.text.y = element_text(size = rel(0.7))) #reducing the size of font
+
+```
+######EVALUATING TOPIC MODEL
+
+#1. plot relative word frequencies
+```{r}
+tidy_tocq <- tocq %>% #create dataframe "tidy_tocq" to contain the variables of tokenised data from "tocq"
+  unnest_tokens (word, text) %>%
   anti_join(stop_words)
+```
 
+##count most common words in both
+```{r}
 tidy_tocq %>%
-  count(word, sort = TRUE)
+  count(word, sort = TRUE) #so count the frequency of each unique word in "tidy_tocq", and sort those word in descending order that means the most frequent word will be on the top 
 ```
 
 ```{r}
-# Compare the relative frequency of occurrence of each word in the two books.
+bookfreq <- tidy_tocq %>% #now we have the word frequency in the whole dataframe, but we need to know the frequency of each word in given particular "book"
+  mutate(booknumber = ifelse(gutenberg_id==21840, "DiA1", "DiA2")) %>% # we assign the "DiA1" and "DiA2" to each book, 21840 and 28458 respectively.
+  mutate(word = str_extract(word, "[a-z]+")) %>% # we only keep the word that is alphabetical (lowercase)
+  count(booknumber, word) %>% #count the frequency of everyword to each book
+  group_by(booknumber) %>% #and we group these values of n and words by specific booknumber
+  mutate(proportion = n / sum(n))%>% #calculate the proportion of the word frequency in the total word of a book
+  select(-n) %>% #delete the column "n"
+  spread(booknumber, proportion) #only keep the column "booknumber" and "proportion"
 
-bookfreq <- tidy_tocq %>%
-  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>% # Assigning book numbers.
-  mutate(word = str_extract(word, "[a-z']+")) %>% # Use regular expressions to extract words, making sure to include only letters and apostrophes.
-  count(booknumber, word) %>% # Count every word in every book.
-  group_by(booknumber) %>%
-  mutate(proportion = n / sum(n)) %>% # Calculate the percentage of each word in the book it is in.
-  select(-n) %>% # Remove raw count columns and keep word proportions.
-  spread(booknumber, proportion) # The proportion of words in each book as a column.
-
-ggplot(bookfreq, aes(x = Book1, y = Book2, color = abs(Book1 - Book2))) + # Set up the charts and do the same below.
-  geom_abline(color = "gray40", lty = 2) +
-  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
-  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
-  scale_x_log10(labels = percent_format()) +
+ggplot(bookfreq, aes(x = DiA1, y = DiA2, color = abs (DiA1 - DiA2))) + # we set the "x" and "y" axis and also the color should represent the absolute difference of DiA1 and DiA2
+  geom_abline(color = "black", lty = 2) + # we set the straight color and type of the line
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) + # the value of alpha decide the transparency of points, from 0 to 1, 0.1 means very transparent, it might be because of large volume of words.
+  geom_text(aes (label = word), check_overlap = TRUE, vjust = 1.5) + #each point should be labeled with given word, and check the overlapping points to keep distance, and also the vertical distance between labels and points should be 1.5
+  scale_x_log10(labels = percent_format()) + #since we are dealing with proprotion values, we should log these value 
   scale_y_log10(labels = percent_format()) +
-  scale_color_gradient(limits = c(0, 0.001), low = "darkslategray4", high = "gray75") +
+  scale_color_gradient(limits = c (0, 0.001), low = "pink", high = "pink3")+ # we make sure each mall point is distinguishable, and define the colors as "pink" for low and darkpink for high
   theme_tufte(base_family = "Helvetica") +
   theme(legend.position="none", 
         strip.background = element_blank(), 
         strip.text.x = element_blank()) +
-  labs(x = "Book 2", y = "Book 1") +
-  coord_equal()
+  labs(x = "Women", y = "What a young women ought to know") +
+  coord_equal() #set the aspect ratio of the plot such that one unit on the x-axis is equal to one unit on the y-axis
+  
 ```
+# this plot means that those more physical concepts appear with greater frequency in Volume 2, while more abstract words of women in Volume 1.
 
 ```{r}
 # Filtering out missing text passages, labeling book chapters, decomposing text into words, and calculating the frequency of occurrence of words other than stop words in each chapter.
