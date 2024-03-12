@@ -1,0 +1,239 @@
+---
+title: "Exercise 5"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r, message=F}
+library(tidyverse) # loads dplyr, ggplot2, and others
+library(stringr) # to handle text elements
+library(tidytext) # includes set of functions useful for manipulating text
+library(topicmodels) # to estimate topic models
+library(gutenbergr) # to get text data
+library(scales)
+library(tm)
+library(ggthemes) # to make your plots look nice
+library(readr)
+library(quanteda)
+library(quanteda.textmodels)
+library(preText)
+```
+
+## 1.Choose another book or set of books from Project Gutenberg.
+
+```{r}
+# Download 'Woman' and 'What a Young Woman Ought to Know by' from Project Gutenberg.
+
+tocq <- gutenberg_download(c(21840,28458), meta_fields = "author")
+```
+
+```{r}
+# These texts were processed and analyzed to count the number of occurrences of each word (after removing the deactivated words) in each book.
+
+tocq_words <- tocq %>%
+  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>% # Assigning book numbers to each book.
+  unnest_tokens(word, text) %>% # Splitting text into words.
+  filter(!is.na(word)) %>% # Filter out missing values.
+  count(booknumber, word, sort = TRUE) %>% # Count and sort every word in every book.
+  ungroup() %>%
+  anti_join(stop_words) # Discontinuing stop words.
+```
+
+```{r}
+# Create a document-word-item matrix.
+
+tocq_dtm <- tocq_words %>%
+  cast_dtm(booknumber, word, n)
+
+tm::inspect(tocq_dtm)
+```
+
+## 2. Run your own topic model on these books, changing the k of topics, and evaluating accuracy.
+
+```{r}
+# Modeling and extracting word distributions.
+
+tocq_lda <- LDA(tocq_dtm, k = 8, control = list(seed = 1234)) # Change the K value as requested in the question.
+
+tocq_topics <- tidy(tocq_lda, matrix = "beta") # Distribution of extracted subject terms.
+head(tocq_topics, n = 10) # Preview of the top 10 items in the distribution of subject terms.
+```
+
+```{r}
+# The top 10 words with the highest weights under each topic were selected and visualized using the ggplot2 package.
+
+tocq_top_terms <- tocq_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>% # Select the 10 words with the highest weight.
+  ungroup() %>%
+  arrange(topic, -beta) # Descending order words.
+
+tocq_top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% # Reorder words.
+  ggplot(aes(beta, term, fill = factor(topic))) + # Set up the charts and do the same below.
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free", ncol = 4) +
+  scale_y_reordered() +
+  theme_tufte(base_family = "Helvetica")
+```
+
+## 3.Validate different pre-processing techniques using preText on the new book(s) of your choice.
+
+```{r}
+# Words are extracted from the raw text data, deactivated words are removed, and the frequency of occurrence of the remaining words is calculated.
+
+tidy_tocq <- tocq %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+tidy_tocq %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+# Compare the relative frequency of occurrence of each word in the two books.
+
+bookfreq <- tidy_tocq %>%
+  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>% # Assigning book numbers.
+  mutate(word = str_extract(word, "[a-z']+")) %>% # Use regular expressions to extract words, making sure to include only letters and apostrophes.
+  count(booknumber, word) %>% # Count every word in every book.
+  group_by(booknumber) %>%
+  mutate(proportion = n / sum(n)) %>% # Calculate the percentage of each word in the book it is in.
+  select(-n) %>% # Remove raw count columns and keep word proportions.
+  spread(booknumber, proportion) # The proportion of words in each book as a column.
+
+ggplot(bookfreq, aes(x = Book1, y = Book2, color = abs(Book1 - Book2))) + # Set up the charts and do the same below.
+  geom_abline(color = "gray40", lty = 2) +
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001), low = "darkslategray4", high = "gray75") +
+  theme_tufte(base_family = "Helvetica") +
+  theme(legend.position="none", 
+        strip.background = element_blank(), 
+        strip.text.x = element_blank()) +
+  labs(x = "Tocqueville Book 2", y = "Tocqueville Book 1") +
+  coord_equal()
+```
+
+```{r}
+# Filtering out missing text passages, labeling book chapters, decomposing text into words, and calculating the frequency of occurrence of words other than stop words in each chapter.
+
+tocq <- tocq %>%
+  filter(!is.na(text))
+
+tocq_chapter <- tocq %>%
+  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>%
+  group_by(booknumber) %>%
+  mutate(chapter = cumsum(str_detect(text, regex("^chapter ", ignore_case = TRUE)))) %>% # Calculate the chapter number by detecting the beginning of the chapter.
+  ungroup() %>%
+  filter(chapter > 0) %>%
+  unite(document, booknumber, chapter) # Combine book number and chapter number into a new column `document`.
+
+tocq_chapter_word <- tocq_chapter %>%
+  unnest_tokens(word, text)
+
+tocq_word_counts <- tocq_chapter_word %>%
+  anti_join(stop_words) %>%
+  count(document, word, sort = TRUE) %>%
+  ungroup()
+```
+
+```{r}
+# Create a document-word-item matrix.
+
+tocq_word_counts
+
+tocq_chapters_dtm <- tocq_word_counts %>%
+  cast_dtm(document, word, n)
+
+tm::inspect(tocq_chapters_dtm)
+```
+
+```{r}
+tocq_chapters_lda <- LDA(tocq_chapters_dtm, k = 2, control = list(seed = 1234))
+
+tocq_chapters_gamma <- tidy(tocq_chapters_lda, matrix = "gamma")
+tocq_chapters_gamma
+```
+
+```{r}
+# Identify and compare the most relevant topics across chapters and throughout the book.
+
+tocq_chapters_gamma <- tocq_chapters_gamma %>%
+  separate(document, c("title", "chapter"), sep = "_", convert = TRUE)
+
+tocq_chapter_classifications <- tocq_chapters_gamma %>%
+  group_by(title, chapter) %>%
+  top_n(1, gamma) %>% # Select the highest gamma value (the most relevant topic) in each chapter.
+  ungroup()
+
+tocq_book_topics <- tocq_chapter_classifications %>%
+  count(title, topic) %>%
+  group_by(title) %>%
+  top_n(1, n) %>% # Selection of the most frequently occurring themes.
+  ungroup() %>%
+  transmute(consensus = title, topic) # Conversion results in renaming the book listings to `consensus`.
+
+tocq_chapter_classifications %>%
+  inner_join(tocq_book_topics, by = "topic") %>%
+  filter(title != consensus)
+```
+
+```{r}
+# The results of the model are combined with the raw data.
+
+assignments <- augment(tocq_chapters_lda, data = tocq_chapters_dtm)
+assignments
+```
+
+```{r}
+assignments <- assignments %>%
+  separate(document, c("title", "chapter"), sep = "_", convert = TRUE) %>% # Split document identifiers into book titles and chapter numbers.
+  inner_join(tocq_book_topics, by = c(".topic" = "topic")) # Intralink chapter topic assignment information to the major themes of each book
+
+assignments %>% # Set up the charts and do the same below.
+  count(title, consensus, wt = count) %>%
+  group_by(title) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(consensus, title, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  geom_text(aes(x = consensus, y = title, label = scales::percent(percent))) +
+  theme_tufte(base_family = "Helvetica") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "Book words assigned to",
+       y = "Book words came from",
+       fill = "% of assignments")
+```
+
+```{r}
+# Randomly select a sample of 1000 documents as a smaller subset to analyze and print out the names of the top 10 documents.
+
+corp <- corpus(tocq, text_field = "text") # Create a text corpus, using the "text" column in the tocq data frame as the text source.
+documents <- corp[sample(1:10000,1000)] # 1000 documents were randomly selected from the corpus.
+print(names(documents[1:10])) # Prints the names of the first 10 selected documents.
+```
+
+```{r}
+preprocessed_documents <- factorial_preprocessing(
+    documents,
+    use_ngrams = TRUE,
+    infrequent_term_threshold = 0.2,
+    verbose = FALSE)
+```
+
+```{r}
+preText_results <- preText(
+    preprocessed_documents,
+    dataset_name = "Tocqueville text",
+    distance_method = "cosine",
+    num_comparisons = 20,
+    verbose = FALSE)
+```
+
+```{r}
+preText_score_plot(preText_results)
+```
