@@ -1,9 +1,9 @@
 ---
-title: "Exercise 5"
+title: "Exercise 5 - Shi, Huiwen, River"
 date: "2024-03-11"
 output: html_document
 ---
-
+#Packages
 ```{r, message=F}
 library(tidyverse) # loads dplyr, ggplot2, and others
 library(stringr) # to handle text elements
@@ -19,7 +19,7 @@ library(quanteda.textmodels)
 library(preText)
 ```
 
-## 1.Choose another book or set of books from Project Gutenberg.
+# 1.Choose another book or set of books from Project Gutenberg.
 
 ```{r}
 # Download 'Woman' and 'What a Young Woman Ought to Know by' from Project Gutenberg.
@@ -48,10 +48,10 @@ tocq_dtm <- tocq_words %>%
 tm::inspect(tocq_dtm)
 ```
 
-## 2. Run your own topic model on these books, changing the k of topics, and evaluating accuracy.
+#2. Run your own topic model on these books, changing the k of topics, and evaluating accuracy.
 
 ```{r}
-# Modeling and extracting word distributions.
+# Modeling and extracting word distributions. (k = 8)
 
 tocq_lda <- LDA(tocq_dtm, k = 8, control = list(seed = 1234)) # Change the K value as requested in the question.
 
@@ -76,8 +76,6 @@ tocq_top_terms %>%
   scale_y_reordered() +
   theme_tufte(base_family = "Helvetica")
 ```
-
-## 3.Validate different pre-processing techniques using preText on the new book(s) of your choice.
 
 ```{r}
 # Words are extracted from the raw text data, deactivated words are removed, and the frequency of occurrence of the remaining words is calculated.
@@ -113,7 +111,7 @@ ggplot(bookfreq, aes(x = Book1, y = Book2, color = abs(Book1 - Book2))) + # Set 
   theme(legend.position="none", 
         strip.background = element_blank(), 
         strip.text.x = element_blank()) +
-  labs(x = "Tocqueville Book 2", y = "Tocqueville Book 1") +
+  labs(x = "Book 2", y = "Book 1") +
   coord_equal()
 ```
 
@@ -141,7 +139,7 @@ tocq_word_counts <- tocq_chapter_word %>%
 ```
 
 ```{r}
-# Create a document-word-item matrix.
+# Create a document-term-matrix.
 
 tocq_word_counts
 
@@ -157,6 +155,7 @@ tocq_chapters_lda <- LDA(tocq_chapters_dtm, k = 2, control = list(seed = 1234))
 tocq_chapters_gamma <- tidy(tocq_chapters_lda, matrix = "gamma")
 tocq_chapters_gamma
 ```
+Examine consensus
 
 ```{r}
 # Identify and compare the most relevant topics across chapters and throughout the book.
@@ -208,6 +207,8 @@ assignments %>% # Set up the charts and do the same below.
        y = "Book words came from",
        fill = "% of assignments")
 ```
+
+# 3.Validate different pre-processing techniques using preText on the new book(s) of your choice.
 
 ```{r}
 # Randomly select a sample of 1000 documents as a smaller subset to analyze and print out the names of the top 10 documents.
