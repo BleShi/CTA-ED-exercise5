@@ -1,0 +1,50 @@
+---
+title: "exercise5_ZhenyunShi.Rmd"
+author: "ZhenyunShi"
+date: "2024-03-12"
+output: html_document
+---
+
+```{r, message=F}
+library(tidyverse) # loads dplyr, ggplot2, and others
+library(stringr) # to handle text elements
+library(tidytext) # includes set of functions useful for manipulating text
+library(topicmodels) # to estimate topic models
+library(gutenbergr) # to get text data
+library(scales)
+library(tm)
+library(ggthemes) # to make your plots look nice
+library(readr)
+library(quanteda)
+library(quanteda.textmodels)
+library(preText)
+```
+
+## 1.Choose another book or set of books from Project Gutenberg.
+
+```{r}
+# Download 'Woman' and 'What a Young Woman Ought to Know by' from Project Gutenberg.
+
+tocq <- gutenberg_download(c(21840,28458), meta_fields = "author")
+```
+
+```{r}
+# These texts were processed and analyzed to count the number of occurrences of each word (after removing the deactivated words) in each book.
+
+tocq_words <- tocq %>%
+  mutate(booknumber = ifelse(gutenberg_id==21840, "Book1", "Book2")) %>% # Assigning book numbers to each book.
+  unnest_tokens(word, text) %>% # Splitting text into words.
+  filter(!is.na(word)) %>% # Filter out missing values.
+  count(booknumber, word, sort = TRUE) %>% # Count and sort every word in every book.
+  ungroup() %>%
+  anti_join(stop_words) # Discontinuing stop words.
+```
+
+```{r}
+# Create a document-word-item matrix.
+
+tocq_dtm <- tocq_words %>%
+  cast_dtm(booknumber, word, n)
+
+tm::inspect(tocq_dtm)
+```
